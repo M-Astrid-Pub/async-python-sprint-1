@@ -2,10 +2,12 @@ import json
 import logging
 import os
 import traceback
-from multiprocessing import Queue, Process
+from multiprocessing import Queue, Process, Event
+from queue import Empty
 from typing import List, Dict
 from statistics import mean
 from datetime import datetime as dt
+import time
 
 from external import analyzer
 from external.client import YandexWeatherAPI
@@ -42,23 +44,27 @@ class DataFetchingTask:
 
 
 class DataCalculationTask(Process):
-    def __init__(self, q: Queue, l: Dict):
+    def __init__(self, q: Queue, l: Dict, e: Event):
         super().__init__()
         self.queue = q
         self.paths = l
+        self.break_event = e
 
     @log_exc
     def run(self):
         while True:
-            if self.queue.empty():
-                print('Queue empty')
+            if self.queue.empty() and self.break_event.is_set():
+                logging.info(f'Все задания обработаны. Завершаем {self.name}.')
                 break
             else:
-                (city_name, path) = self.queue.get()
+                try:
+                    (city_name, path) = self.queue.get(block=False)
+                except Empty:
+                    continue
                 self.analyze(city_name, path)
 
     def analyze(self, city_name: str, path: str):
-        logging.info(f'Анализируем {path} в {self.name}')
+        logging.info(f'Считаем средние для {path} в {self.name}')
 
         data = analyzer.load_data(path)
         data = analyzer.analyze_json(data)
@@ -68,8 +74,9 @@ class DataCalculationTask(Process):
         out_path = f"tmp/{city_name}_calc.json"
         with open(out_path, 'w') as fd:
             json.dump(data, fd)
-            self.paths[city_name] = out_path
-            logging.info(f'Успешно проанализировали {path} в {self.name}')
+
+        self.paths[city_name] = out_path
+        logging.info(f'Успешно посчитали средние для {path} в {self.name}')
 
     @staticmethod
     def _count_means(data: Dict):
@@ -102,7 +109,7 @@ class DataAnalyzingTask:
     @log_exc
     def run(self, data, res_dir):
         logging.info(f'Сортируем данные для получения рейтинга.')
-        logging.debug({data})
+        logging.debug(data)
         self._sort_data(data)
 
         logging.info(f'Присваиваем рейтинг городам')
