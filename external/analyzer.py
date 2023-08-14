@@ -1,4 +1,5 @@
 import argparse
+import copy
 import json
 import logging
 from dataclasses import dataclass, field
@@ -196,7 +197,7 @@ def analyze_json(data):
 
         days.append(d_info.to_json())
 
-    result = DEFAULT_OUTPUT_RESULT
+    result = copy.deepcopy(DEFAULT_OUTPUT_RESULT)
     # result[OUTPUT_RAW_DATA_KEY] = data
     result[OUTPUT_DAYS_KEY] = days
     return result

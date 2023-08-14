@@ -1,6 +1,7 @@
-
 creds.ini
 .idea/
 __pycache__/
 *.pyc
 /tmp/
+/tmp_tests/
+Log.log

@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -8,9 +9,12 @@ from queue import Empty
 from typing import List, Dict
 from statistics import mean
 from datetime import datetime as dt
+from urllib.error import HTTPError
 
+from exceptions import InvalidDataError
 from external import analyzer
 from external.client import YandexWeatherAPI
+from external.resp_model import AnalyzedApiRespModel
 from utils import get_url_by_city_name
 
 
@@ -20,22 +24,38 @@ def log_exc(func):
             func(*args, **kwargs)
         except Exception:
             logging.error(traceback.print_exc())
+            raise
 
     return wrapper
 
 
 class DataFetchingTask:
-    def __init__(self, queue: Queue):
+    def __init__(self, queue: Queue, out_dir: str):
         super().__init__()
         self.queue = queue
+        self.out_dir = out_dir
 
-    @log_exc
-    def run(self, city_name: str, out_path: str):
-        logging.info(f"Получаем данные для {city_name}")
+    def _load_data(self, city_name: str):
         url_with_data = get_url_by_city_name(city_name)
-        res = YandexWeatherAPI.get_forecasting(url_with_data)
+        try:
+            res = YandexWeatherAPI.get_forecasting(url_with_data)
+        except HTTPError:
+            logging.exception(
+                f"Не удалось получить информацию по {city_name}.",
+                f"URL: {url_with_data}",
+            )
+            raise
+
+        out_path = os.path.join(self.out_dir, f"{city_name}.json")
         with open(out_path, "w") as fd:
             json.dump(res, fd)
+
+        return out_path
+
+    @log_exc
+    def run(self, city_name: str):
+        logging.info(f"Получаем данные для {city_name}")
+        out_path = self._load_data(city_name)
         logging.info(f"Успешно выгрузили данные для {city_name} в {out_path}")
 
         self.queue.put((city_name, out_path))
@@ -43,11 +63,12 @@ class DataFetchingTask:
 
 
 class DataCalculationTask(Process):
-    def __init__(self, queue: Queue, paths: Dict, event: Event):
+    def __init__(self, queue: Queue, paths: Dict, event: Event, dir: "str"):
         super().__init__()
         self.queue = queue
         self.paths = paths
         self.break_event = event
+        self.dir = dir
 
     @log_exc
     def run(self):
@@ -67,6 +88,14 @@ class DataCalculationTask(Process):
 
         data = analyzer.load_data(path)
         data = analyzer.analyze_json(data)
+        try:
+            data = AnalyzedApiRespModel.from_dict(data)
+        except KeyError as e:
+            raise InvalidDataError(
+                f"Структура {path} невалидна. Отсутствует ключ {e}.",
+                "Пропускаем город.",
+            )
+
         mean_tmp, mean_cond = self._count_means(data)
         data = {
             "city_name": city_name,
@@ -74,7 +103,7 @@ class DataCalculationTask(Process):
             "mean_condition_hours": mean_cond,
         }
 
-        out_path = f"tmp/{city_name}_calc.json"
+        out_path = f"{self.dir}/{city_name}_calc.json"
         with open(out_path, "w") as fd:
             json.dump(data, fd)
 
@@ -82,13 +111,13 @@ class DataCalculationTask(Process):
         logging.info(f"Успешно посчитали средние для {path} в {self.name}")
 
     @staticmethod
-    def _count_means(data: Dict):
+    def _count_means(data: AnalyzedApiRespModel):
         temps, conds = [], []
-        for day in data["days"]:
-            if day["temp_avg"] is None:
+        for day in data.days:
+            if day.temp_avg is None:
                 continue
-            temps.append(day["temp_avg"])
-            conds.append(day["relevant_cond_hours"])
+            temps.append(day.temp_avg)
+            conds.append(day.relevant_cond_hours)
         if not len(temps):
             raise Exception("No temp data")
         return mean(temps), mean(conds)
@@ -107,11 +136,17 @@ class DataAggregationTask:
 
 
 class DataAnalyzingTask:
-    @log_exc
-    def run(self, data: List, res_dir: str):
+    @staticmethod
+    def run(data: List, res_dir: str):
         logging.info("Сортируем данные для получения рейтинга.")
         logging.debug(data)
-        self._sort_data(data)
+
+        data.sort(
+            key=lambda x: (
+                x["mean_temperature"] * -1,
+                x["mean_condition_hours"] * -1,
+            )
+        )
 
         logging.info("Присваиваем рейтинг городам")
         for rating, city_data in enumerate(data):
@@ -129,7 +164,4 @@ class DataAnalyzingTask:
             json.dump(data, fd)
         print(f"Полный результат сохранен в {res_path}")
 
-    @staticmethod
-    def _sort_data(data):
-        data.sort(key=lambda x: x["mean_condition_hours"])
-        data.sort(key=lambda x: x["mean_temperature"] * -1)
+        return best_city

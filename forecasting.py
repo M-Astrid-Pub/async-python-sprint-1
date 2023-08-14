@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Queue, Manager, Event
 import os
 
+from exceptions import NoDataError
 from tasks import (
     DataFetchingTask,
     DataCalculationTask,
@@ -41,15 +42,15 @@ def forecast_weather():
     calc_tasks = []
     calc_paths = Manager().dict()
     for _ in range(os.cpu_count()):
-        task = DataCalculationTask(queue, calc_paths, load_complete_event)
+        task = DataCalculationTask(
+            queue, calc_paths, load_complete_event, TMP_DIR
+        )
         task.start()
         calc_tasks.append(task)
 
-    logging.info("Создали пул потоков  для скачивания данных.")
+    logging.info("Создали потоки  для скачивания данных.")
     with ThreadPoolExecutor() as pool:
-        for city_name in CITIES:
-            o_path = os.path.join(TMP_DIR, f"{city_name}.json")
-            pool.submit(DataFetchingTask(queue).run, city_name, o_path)
+        pool.map(DataFetchingTask(queue, TMP_DIR).run, CITIES, timeout=2)
 
     logging.info(
         "Закончили скачивание данных. Завершаем процессы рассчета средних."
@@ -57,13 +58,19 @@ def forecast_weather():
     load_complete_event.set()
 
     for task in calc_tasks:
-        task.join()
+        task.join(timeout=2)
+
+    if not calc_paths:
+        raise NoDataError("Не удалось получить анализ данных.")
 
     result = []
     logging.info("Запускаем пул потоков для аггрегации данных")
     with ThreadPoolExecutor() as pool:
-        pool.map(DataAggregationTask(result).run, calc_paths.values())
+        pool.map(
+            DataAggregationTask(result).run, calc_paths.values(), timeout=2
+        )
 
+    # Нет смысла распараллеливать этот таск
     DataAnalyzingTask().run(result, RES_DIR)
 
 
