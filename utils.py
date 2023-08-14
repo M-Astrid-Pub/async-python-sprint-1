@@ -1,3 +1,4 @@
+# flake8: noqa
 CITIES = {
     "MOSCOW": "https://code.s3.yandex.net/async-module/moscow-response.json",
     "PARIS": "https://code.s3.yandex.net/async-module/paris-response.json",
@@ -14,10 +15,9 @@ CITIES = {
     "BUCHAREST": "https://code.s3.yandex.net/async-module/bucharest-response.json",
     "ROMA": "https://code.s3.yandex.net/async-module/roma-response.json",
     "CAIRO": "https://code.s3.yandex.net/async-module/cairo-response.json",
-
     "GIZA": "https://code.s3.yandex.net/async-module/giza-response.json",
     "MADRID": "https://code.s3.yandex.net/async-module/madrid-response.json",
-    "TORONTO": "https://code.s3.yandex.net/async-module/toronto-response.json"
+    "TORONTO": "https://code.s3.yandex.net/async-module/toronto-response.json",
 }
 
 MIN_MAJOR_PYTHON_VER = 3

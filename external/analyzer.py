@@ -1,10 +1,11 @@
 import argparse
+import copy
 import json
 import logging
 from dataclasses import dataclass, field
 from functools import reduce
 from operator import getitem
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 
 PATH_FROM_INPUT = "./../examples/response.json"
 PATH_TO_OUTPUT = "./../examples/output.json"
@@ -89,7 +90,7 @@ def parse_args():
 
 @dataclass
 class HourInfo:
-    raw_data: Dict[str, tuple[str, int]] = field(repr=False)
+    raw_data: Dict[str, Tuple[str, int]] = field(repr=False)
     condition: Optional[str] = field(init=False, default=None)
     temperature: Optional[int] = field(init=False, default=None)
     hour: Optional[int] = field(init=False, default=None)
@@ -117,7 +118,7 @@ class HourInfo:
 
 @dataclass
 class DayInfo:
-    raw_data: Dict[str, tuple[str, int]] = field(repr=False)
+    raw_data: Dict[str, Tuple[str, int]] = field(repr=False)
     hours: Optional[List[HourInfo]] = field(init=False, repr=False, default=None)
 
     date: Optional[str] = field(init=False, default=None)
@@ -196,7 +197,7 @@ def analyze_json(data):
 
         days.append(d_info.to_json())
 
-    result = DEFAULT_OUTPUT_RESULT
+    result = copy.deepcopy(DEFAULT_OUTPUT_RESULT)
     # result[OUTPUT_RAW_DATA_KEY] = data
     result[OUTPUT_DAYS_KEY] = days
     return result
