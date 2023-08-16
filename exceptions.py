@@ -8,3 +8,7 @@ class InvalidDataError(Exception):
 
 class NoDataError(Exception):
     pass
+
+
+class InvalidWeatherData(Exception):
+    pass

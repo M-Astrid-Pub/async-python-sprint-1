@@ -5,7 +5,6 @@ import os
 import shutil
 
 import tasks
-from exceptions import InvalidDataError
 
 TEST_TMP_DIR = "tmp_tests"
 
