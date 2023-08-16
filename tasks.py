@@ -1,4 +1,3 @@
-import copy
 import json
 import logging
 import os
@@ -11,7 +10,7 @@ from statistics import mean
 from datetime import datetime as dt
 from urllib.error import HTTPError
 
-from exceptions import InvalidDataError
+from exceptions import InvalidDataError, InvalidWeatherData
 from external import analyzer
 from external.client import YandexWeatherAPI
 from external.resp_model import AnalyzedApiRespModel
@@ -94,7 +93,7 @@ class DataCalculationTask(Process):
             raise InvalidDataError(
                 f"Структура {path} невалидна. Отсутствует ключ {e}.",
                 "Пропускаем город.",
-            )
+            ) from e
 
         mean_tmp, mean_cond = self._count_means(data)
         data = {
@@ -119,7 +118,7 @@ class DataCalculationTask(Process):
             temps.append(day.temp_avg)
             conds.append(day.relevant_cond_hours)
         if not len(temps):
-            raise Exception("No temp data")
+            raise InvalidWeatherData("No average temperature data")
         return mean(temps), mean(conds)
 
 
@@ -143,9 +142,10 @@ class DataAnalyzingTask:
 
         data.sort(
             key=lambda x: (
-                x["mean_temperature"] * -1,
-                x["mean_condition_hours"] * -1,
-            )
+                x["mean_temperature"],
+                x["mean_condition_hours"],
+            ),
+            reverse=True,
         )
 
         logging.info("Присваиваем рейтинг городам")
